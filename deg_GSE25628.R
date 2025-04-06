@@ -1,0 +1,10 @@
+library(GEOquery)
+library(limma)
+library(annotate)
+library(ggplot2)
+library(pheatmap)
+library(hgu133a.db)
+
+gse <- getGEO("GSE25628", GSEMatrix = TRUE)
+exprSet <- exprs(gse[[1]])
+phenoData <- pData(gse[[1]])
