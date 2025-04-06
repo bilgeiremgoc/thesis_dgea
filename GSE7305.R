@@ -1,27 +1,12 @@
-install.packages("BiocManager")
-BiocManager::install("GEOquery")
-library(GEOquery)
+gse <- getGEO("GSE7305")
 
-BiocManager::install(c("GEOquery", "limma", "annotate", "hgu133a.db"))
-install.packages("ggplot2")
-install.packages("pheatmap")
-
-library(GEOquery)
-library(limma)
-library(annotate)
-library(ggplot2)
-library(pheatmap)
-library(hgu133a.db)
-
-getGEO("GSE11691")
-gse1em <- getGEO("GSE11691", GSEMatrix = TRUE, AnnotGPL = TRUE)
+gse1em <- getGEO("GSE7305", GSEMatrix = TRUE, AnnotGPL = TRUE)
 
 exprs_data <- exprs(gse1em[[1]])
-exprs_data <- normalizeBetweenArrays(exprs_data, method = "quantile")
 
-group <- factor(c(rep("endometriosis", 9), rep("control", 9)))
-design <- model.matrix(~ 0 + group)
-colnames(design) <- levels(group)
+
+# Veri hakkında genel bilgi
+head(exprs(data))
 
 
 boxplot(exprs_data, outline = FALSE, las=2, main="Before Normalization")
@@ -29,15 +14,16 @@ boxplot(exprs_data, outline = FALSE, las=2, main="Before Normalization")
 exprs_data <- normalizeBetweenArrays(exprs_data)
 boxplot(exprs_data, outline = FALSE, las=2, main="After Normalization")
 
+group <- factor(c(rep("endometriosis", 10), rep("control", 10)))
+design <- model.matrix(~ 0 + group)
+colnames(design) <- levels(group) 
+
 
 fit <- lmFit(exprs_data, design)
-
-# Grup kar????la??t??rmas??
 contrast_matrix <- makeContrasts(endometriosis - control, levels = design)
 fit2 <- contrasts.fit(fit, contrast_matrix)
 fit2 <- eBayes(fit2)
 
-# Sonu??lar?? al
 
 results <- topTable(fit2, adjust = "fdr", number = Inf)
 
@@ -59,12 +45,6 @@ pheatmap(exprs_data[rownames(deg)[1:50], ], scale = "row")
 deg$GeneSymbol <- getSYMBOL(rownames(deg), "hgu133a.db")
 head(deg)
 
-write.csv(deg, "deg_GSE11691.csv")
-
-
-
-
-
-
+write.csv(deg, "deg_GSE7305.csv")
 
 
