@@ -13,51 +13,59 @@ library(DESeq2)
 BiocManager::install("edgeR")
 library(edgeR)
 
-gse <- getGEO("GSE25628", GSEMatrix = TRUE)
+gse <- getGEO("GSE25628")
 
-exprSet <- exprs(gse[[1]])  # Expression matrix
-metaData <- pData(gse[[1]])
+gse1em <- getGEO("GSE2628", GSEMatrix = TRUE, AnnotGPL = TRUE)
 
-head(exprSet)
-head(metaData)
+exprs_data <- exprs(gse1em[[1]])
 
+head(exprs(data))
 
-# Grup bilgilerini düzenleyelim
-metaData$disease <- factor(metaData$disease, levels = c("Normal (control)", "Normal (eutopic)", "Pathological (ectopic)"))
+boxplot(exprs_data, outline = FALSE, las=2, main="Before Normalization")
 
-# Geçerli isimler oluşturmak için boşluk ve özel karakterleri değiştirelim
-metaData$disease <- gsub(" ", ".", metaData$disease)  # Boşlukları nokta ile değiştirme
-metaData$disease <- make.names(metaData$disease)  # Geçerli R isimleri yapmak
+exprs_data <- normalizeBetweenArrays(exprs_data)
+boxplot(exprs_data, outline = FALSE, las=2, main="After Normalization")
 
-# Yeni isimlere göz atalım
-table(metaData$disease)
-
-
-group <- factor(c(rep("endometriosis", 7), rep("control", 6), rep("normal", 9)))
-
-exprSet <- as.matrix(exprSet)
-
+group <- factor(c(rep("endometriosis", 7), rep("control", 15)))
 design <- model.matrix(~ 0 + group)
-colnames(design) <- levels(metaData$disease)
+colnames(design) <- levels(group) 
 
-# Normalizasyon için voom kullanıyoruz
-y <- DGEList(counts = exprSet)
-y <- calcNormFactors(y)
-v <- voom(y, design = model.matrix(~disease, data = metaData), plot = TRUE)
 
-# Linear model kurun
-fit <- lmFit(v, design = model.matrix(~disease, data = metaData))
-
-fit <- lmFit(exprSet, design)
-
-contrast.matrix <- makeContrasts(
-  Normal.control - Normal.eutopic,       
-  Normal.control - Pathological.ectopic, 
-  Normal.eutopic - Pathological.ectopic, 
-  levels = design
-)
-
-fit2 <- contrasts.fit(fit, contrast.matrix)
-
-# Sonuçları değerlendirin
+fit <- lmFit(exprs_data, design)
+contrast_matrix <- makeContrasts(endometriosis - control, levels = design)
+fit2 <- contrasts.fit(fit, contrast_matrix)
 fit2 <- eBayes(fit2)
+
+
+results <- topTable(fit2, adjust = "fdr", number = Inf)
+
+deg <- subset(results, abs(logFC) > 1 & adj.P.Val < 0.05)
+head(deg)
+
+# Volkan Plotu
+results$threshold <- as.factor(abs(results$logFC) > 1 & results$adj.P.Val < 0.05)
+
+ggplot(results, aes(x = logFC, y = -log10(adj.P.Val), color = threshold)) +
+  geom_point(alpha = 0.8) +
+  theme_minimal() +
+  scale_color_manual(values = c("grey", "red")) +
+  labs(title = "Volcano Plot")
+
+
+nrow(deg)
+
+
+# Heatmap (ilk 50 DEG)
+pheatmap(exprs_data[rownames(deg)[1:50], ], scale = "row")
+#Annotation sorunu yaşandığı için çıkmadı ama gen listesi var
+
+
+deg$GeneSymbol <- getSYMBOL(rownames(deg), "hgu133a.db")
+head(deg)
+
+write.csv(deg, "deg_GSE25628.csv")
+
+head(rownames(exprs_data))
+head(rownames(deg))
+
+
