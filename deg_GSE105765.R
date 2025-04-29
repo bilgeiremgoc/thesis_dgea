@@ -1,4 +1,4 @@
-library(GEOquery)
+
 library(DESeq2)
 library(ggplot2)
 library(pheatmap)
@@ -10,50 +10,33 @@ BiocManager::install("GEOquery")
 
 library(GEOquery)
 
-gse <- getGEO("GSE105764")
+gse <- getGEO("GSE105765")
 
+gse1em <- getGEO("GSE105765", GSEMatrix = TRUE, AnnotGPL = TRUE)
 
-#database error verdi tekrar dene
+meta <- pData(gse[[1]])
 
-getGEOSuppFiles("GSE105764")
+# Örnek grup bilgisi
+group <- meta$`disease state`  # veya uygun olan sütun
+colData <- data.frame(row.names = colnames(counts),
+                      condition = factor(group))
 
-# Sayım matrisi oku
-counts <- read.table("C:/Users/bilge/Documents/thesis_dgea/GSE105764/GSE105764_count.txt.gz",
-                     header = TRUE, row.names = 1, sep = "\t")
-head(counts)
+# 1. Sütunu faktör olarak ayarla ve referans seviyesini 'control' yap
+colData$condition <- factor(colData$condition, levels = c("control", "case"))
 
-
-group <- factor(c(rep("endometriosis", 8), rep("control", 8)))
-
-
-colData <- data.frame(
-  row.names = colnames(counts),
-  condition = group
-)
-
-counts <- read.table("C:/Users/bilge/Documents/thesis_dgea/GSE105764/GSE105764_count.txt.gz",
-                     header = TRUE, row.names = 1, sep = "\t")
-
-# 2. Annotation kolonlarını kaldır (eğer varsa)
-# Eğer sadece sayım varsa bu adım atlanabilir:
-# counts <- counts[, 7:ncol(counts)]  # Gerekirse
-
-# 3. Grup bilgisi
-group <- factor(c(rep("endometriosis", 8), rep("control", 8)))
-colData <- data.frame(condition = group)
-rownames(colData) <- colnames(counts)
-
-# 4. DESeq2 analiz
+# 2. Ardından DESeqDataSet oluştur
 dds <- DESeqDataSetFromMatrix(countData = counts,
                               colData = colData,
                               design = ~ condition)
-dds <- DESeq(dds)
-res <- results(dds, contrast = c("condition", "endometriosis", "control"))
 
-# 5. DEGs
+
+
+dds <- DESeq(dds)
+
+res <- results(dds, contrast = c("condition", "control", "case"))
+
 deg <- subset(res, padj < 0.05 & abs(log2FoldChange) > 1)
 head(deg)
-
 
 library(org.Hs.eg.db)
 deg$symbol <- mapIds(org.Hs.eg.db,
@@ -84,10 +67,6 @@ vsd <- vst(dds)
 pheatmap(assay(vsd)[rownames(deg)[1:50], ], scale = "row",
          annotation_col = colData)
 
-write.csv(deg, "deg_GSE105764.csv" )
+write.csv(deg, "deg_GSE105765.csv" )
 
 deg
-
-
-
-

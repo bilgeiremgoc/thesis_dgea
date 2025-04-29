@@ -1,24 +1,19 @@
-library(GEOquery)
-library(limma)
-library(annotate)
+# Gerekli kütüphaneler
 library(ggplot2)
 library(pheatmap)
-library(hgu133a.db)
-if (!requireNamespace("BiocManager", quietly = TRUE))
-  install.packages("BiocManager")
+library(dplyr)
 
-BiocManager::install("DESeq2")
-library(DESeq2)
+gse <- getGEO("GSE7307")
 
-BiocManager::install("edgeR")
-library(edgeR)
-library(writexl)
-
-gse <- getGEO("GSE25628")
-
-gse1em <- getGEO("GSE2628", GSEMatrix = TRUE, AnnotGPL = TRUE)
+gse1em <- getGEO("GSE7307", GSEMatrix = TRUE, AnnotGPL = TRUE)
 
 exprs_data <- exprs(gse1em[[1]])
+
+
+if (max(exprs_data, na.rm = TRUE) > 100) {
+  exprs_data <- log2(exprs_data + 1)
+}
+
 
 boxplot(exprs_data, outline = FALSE, las=2, main="Before Normalization")
 
@@ -28,16 +23,26 @@ boxplot(exprs_data, outline = FALSE, las=2, main="After Normalization")
 gse_data<- gse[[1]]
 
 metadata <- pData(gse_data)
-group <- ifelse(grepl("normal", metadata$`disease state:ch1`, ignore.case = TRUE), "control", "endometriosis")
-group <- factor(group)
-table(group)  # grup sayısını kontrol et
 
+
+head(metadata$characteristics_ch1)
+
+# Endometrium doku olanları seç
+endometrium_samples <- grepl("endometrium", metadata$characteristics_ch1, ignore.case = TRUE)
+
+# Veriyi filtrele
+exprs_data <- exprs_data[, endometrium_samples]
+metadata <- metadata[endometrium_samples, ]
+
+group <- ifelse(grepl("normal", metadata$`Disease type:ch1`, ignore.case = TRUE), "endometriosis", "normal")
+group <- factor(group)
+table(group)
 
 design <- model.matrix(~ 0 + group)
 colnames(design) <- levels(group)
 
-fit <- lmFit(gse_data, design)
-contrast_matrix <- makeContrasts(endometriosis - control, levels = design)
+fit <- lmFit(exprs_data, design)
+contrast_matrix <- makeContrasts(endometriosis - normal, levels = design)
 fit2 <- contrasts.fit(fit, contrast_matrix)
 fit2 <- eBayes(fit2)
 
@@ -61,15 +66,17 @@ nrow(deg)
 
 
 # Heatmap (ilk 50 DEG)
-pheatmap(gse_data[rownames(deg)[1:50], ], scale = "row")
+pheatmap(exprs_data[rownames(deg)[1:50], ], scale = "row")
 #Annotation sorunu yaşandığı için çıkmadı ama gen listesi var
 
 
 deg$GeneSymbol <- getSYMBOL(rownames(deg), "hgu133a.db")
 head(deg)
 
+deg <- deg[!is.na(deg$GeneSymbol) & deg$GeneSymbol != "", ]
+head(deg)
 
-write_xlsx(deg, "deg_GSE25628.xlsx")
+write_xlsx(deg, "deg_GSE7307.xlsx")
 
 deg_filtered <- deg %>%
   filter(adj.P.Val < 0.05 & abs(logFC) > 1)
@@ -82,6 +89,3 @@ head(deg_filtered)
 
 up_genes <- deg_filtered %>% filter(logFC > 1)
 down_genes <- deg_filtered %>% filter(logFC < -1)
-
-
-up_genes
