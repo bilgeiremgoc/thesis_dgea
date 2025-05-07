@@ -7,6 +7,7 @@ library(hgu133a.db)
 library(DESeq2)
 library(edgeR)
 library(writexl)
+library(magrittr)
 
 #Dataseti elde etme ve matrix oluşturma
 gse <- getGEO("GSE7305")
@@ -87,4 +88,63 @@ head(deg_filtered)
 up_genes <- deg_filtered %>% filter(logFC > 1)
 down_genes <- deg_filtered %>% filter(logFC < -1)
 
+
+
+
+
+
+
+
+
+
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+BiocManager::install(c("clusterProfiler", "org.Hs.eg.db"), ask = FALSE)
+
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+
+deg_filtered$ENTREZID <- mapIds(hgu133a.db,
+                                keys = rownames(deg_filtered),
+                                column = "ENTREZID",
+                                keytype = "PROBEID",
+                                multiVals = "first")
+
+# NA olmayanları al
+entrez_ids <- na.omit(deg_filtered$ENTREZID)
+
+go_enrich <- enrichGO(gene = entrez_ids,
+                      OrgDb = org.Hs.eg.db,
+                      keyType = "ENTREZID",
+                      ont = "BP",
+                      pAdjustMethod = "BH",
+                      qvalueCutoff = 0.05,
+                      readable = TRUE)
+
+head(go_enrich)
+
+#Barplot
+barplot(go_enrich, showCategory = 20, title = "GO BP Enrichment")
+
+#kegg enrichment
+
+kegg_enrich <- enrichKEGG(gene = entrez_ids,
+                          organism = "hsa",
+                          pAdjustMethod = "BH",
+                          qvalueCutoff = 0.05)
+
+# Entrez ID'den gen adlarına dönüştür (okunabilirlik)
+kegg_enrich <- setReadable(kegg_enrich, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
+
+# İlk sonuçlara bak
+head(kegg_enrich)
+
+# Barplot
+barplot(kegg_enrich, showCategory = 20, title = "KEGG Pathway Enrichment")
+
+write_xlsx(as.data.frame(go_enrich), "GSE7305_GO_enrichment.xlsx")
+write_xlsx(as.data.frame(kegg_enrich), "GSE7305_KEGG_enrichment.xlsx")
 

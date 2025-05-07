@@ -48,9 +48,18 @@ fit2 <- eBayes(fit2)
 
 
 results <- topTable(fit2, adjust = "fdr", number = Inf)
+head(results)
 
-deg <- subset(results, abs(logFC) > 1 & adj.P.Val < 0.05)
+deg_results <- topTable(fit2, adjust.method = "BH", number = Inf)
+# Filtrele: logFC > 1 ve adj.P.Val < 0.05
+deg <- subset(deg_results, abs(logFC) > 1 & adj.P.Val < 0.05)
 head(deg)
+
+deg$gene_symbol <- getSYMBOL(rownames(deg), "hgu133a.db")
+head(deg)
+
+deg_clean <- deg[!is.na(deg$gene_symbol), ]
+deg_clean
 
 # Volkan Plotu
 results$threshold <- as.factor(abs(results$logFC) > 1 & results$adj.P.Val < 0.05)
@@ -62,23 +71,15 @@ ggplot(results, aes(x = logFC, y = -log10(adj.P.Val), color = threshold)) +
   labs(title = "Volcano Plot")
 
 
-nrow(deg)
-
-
 # Heatmap (ilk 50 DEG)
-pheatmap(exprs_data[rownames(deg)[1:50], ], scale = "row")
+pheatmap(exprs_data[rownames(deg_clean)[1:50], ], scale = "row")
 #Annotation sorunu yaşandığı için çıkmadı ama gen listesi var
 
 
-deg$GeneSymbol <- getSYMBOL(rownames(deg), "hgu133a.db")
-head(deg)
 
-deg <- deg[!is.na(deg$GeneSymbol) & deg$GeneSymbol != "", ]
-head(deg)
+write_xlsx(deg_clean, "deg_GSE7307.xlsx")
 
-write_xlsx(deg, "deg_GSE7307.xlsx")
-
-deg_filtered <- deg %>%
+deg_filtered <- deg_clean %>%
   filter(adj.P.Val < 0.05 & abs(logFC) > 1)
 
 # Kaç tane gen kaldı?
@@ -89,3 +90,52 @@ head(deg_filtered)
 
 up_genes <- deg_filtered %>% filter(logFC > 1)
 down_genes <- deg_filtered %>% filter(logFC < -1)
+
+
+
+
+
+
+
+deg_filtered$ENTREZID <- mapIds(hgu133a.db,
+                                keys = rownames(deg_filtered),
+                                column = "ENTREZID",
+                                keytype = "PROBEID",
+                                multiVals = "first")
+
+
+
+# NA olmayanları al
+entrez_ids <- na.omit(deg_filtered$ENTREZID)
+
+go_enrich <- enrichGO(gene = entrez_ids,
+                      OrgDb = org.Hs.eg.db,
+                      keyType = "ENTREZID",
+                      ont = "BP",
+                      pAdjustMethod = "BH",
+                      qvalueCutoff = 0.05,
+                      readable = TRUE)
+
+head(go_enrich)
+
+#Barplot
+barplot(go_enrich, showCategory = 20, title = "GO BP Enrichment")
+
+#kegg enrichment
+
+kegg_enrich <- enrichKEGG(gene = entrez_ids,
+                          organism = "hsa",
+                          pAdjustMethod = "BH",
+                          qvalueCutoff = 0.05)
+
+# Entrez ID'den gen adlarına dönüştür (okunabilirlik)
+kegg_enrich <- setReadable(kegg_enrich, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
+
+# İlk sonuçlara bak
+head(kegg_enrich)
+
+# Barplot
+barplot(kegg_enrich, showCategory = 20, title = "KEGG Pathway Enrichment")
+
+write_xlsx(as.data.frame(go_enrich), "GSE7307_GO_enrichment.xlsx")
+write_xlsx(as.data.frame(kegg_enrich), "GSE7307_KEGG_enrichment.xlsx")

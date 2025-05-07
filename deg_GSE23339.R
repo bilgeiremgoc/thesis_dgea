@@ -42,15 +42,15 @@ ggplot(results, aes(x = logFC, y = -log10(adj.P.Val), color = threshold)) +
   labs(title = "Volcano Plot")
 
 # Heatmap (ilk 50 DEG)
-pheatmap(results[rownames(deg)[1:50], ], scale = "row")
+pheatmap(deg_filtered[rownames(deg)[1:50], ], scale = "row")
 
 feature_data <- fData(gse1em[[1]])
 
 head(feature_data[ , 1:5])
 results$GeneSymbol <- feature_data[rownames(results), "Gene symbol"]
 
-results <- results[!is.na(results$GeneSymbol) & results$GeneSymbol != "", ]
-head(results)
+deg <- results[!is.na(results$GeneSymbol) & results$GeneSymbol != "", ]
+head(deg)
 
 
 write_xlsx(deg, "deg_GSE23339.xlsx")
@@ -66,3 +66,60 @@ head(deg_filtered)
 
 up_genes <- deg_filtered %>% filter(logFC > 1)
 down_genes <- deg_filtered %>% filter(logFC < -1)
+
+
+if (!requireNamespace("illuminaHumanv4.db", quietly = TRUE)) {
+  BiocManager::install("illuminaHumanv4.db")
+}
+library(illuminaHumanv4.db)
+
+
+
+
+
+
+
+
+deg_filtered$ENTREZID <- mapIds(illuminaHumanv4.db,
+                                keys = rownames(deg_filtered),
+                                column = "ENTREZID",
+                                keytype = "PROBEID",
+                                multiVals = "first")
+
+
+# NA olmayanları al
+entrez_ids <- na.omit(deg_filtered$ENTREZID)
+
+go_enrich <- enrichGO(gene = entrez_ids,
+                      OrgDb = org.Hs.eg.db,
+                      keyType = "ENTREZID",
+                      ont = "BP",
+                      pAdjustMethod = "BH",
+                      qvalueCutoff = 0.05,
+                      readable = TRUE)
+
+head(go_enrich)
+
+#Barplot
+barplot(go_enrich, showCategory = 20, title = "GO BP Enrichment")
+
+#kegg enrichment
+
+kegg_enrich <- enrichKEGG(gene = entrez_ids,
+                          organism = "hsa",
+                          pAdjustMethod = "BH",
+                          qvalueCutoff = 0.05)
+
+# Entrez ID'den gen adlarına dönüştür (okunabilirlik)
+kegg_enrich <- setReadable(kegg_enrich, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
+
+# İlk sonuçlara bak
+head(kegg_enrich)
+
+# Barplot
+barplot(kegg_enrich, showCategory = 20, title = "KEGG Pathway Enrichment")
+
+write_xlsx(as.data.frame(go_enrich), "deg_GSE23339_GO_enrichment.xlsx")
+write_xlsx(as.data.frame(kegg_enrich), "deg_GSE23339_KEGG_enrichment.xlsx")
+
+

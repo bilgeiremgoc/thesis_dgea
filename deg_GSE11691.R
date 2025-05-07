@@ -56,10 +56,10 @@ contrast_matrix <- makeContrasts(endometriosis - control, levels = design)
 fit2 <- contrasts.fit(fit, contrast_matrix)
 fit2 <- eBayes(fit2)
 
-# Sonuçları al
+# Sonuçları alma
 
 results <- topTable(fit2, adjust = "fdr", number = Inf)
-results
+head(results)
 
 deg_results <- topTable(fit2, adjust.method = "BH", number = Inf)
 
@@ -87,10 +87,6 @@ ggplot(deg_results, aes(x = logFC, y = -log10(adj.P.Val), color = threshold)) +
 # Heatmap (ilk 50 DEG)
 pheatmap(exprs_data[rownames(deg)[1:50], ], scale = "row")
 
-deg$GeneSymbol <- getSYMBOL(rownames(deg), "hgu133a.db")
-head(deg)
-
-
 
 write_xlsx(deg, "deg_GSE11691.xlsx")
 
@@ -106,6 +102,52 @@ head(deg_filtered)
 up_genes <- deg_filtered %>% filter(logFC > 1)
 down_genes <- deg_filtered %>% filter(logFC < -1)
 
+
+
+
+
+
+deg_filtered$ENTREZID <- mapIds(hgu133a.db,
+                                keys = rownames(deg_filtered),
+                                column = "ENTREZID",
+                                keytype = "PROBEID",
+                                multiVals = "first")
+
+
+# NA olmayanları al
+entrez_ids <- na.omit(deg_filtered$ENTREZID)
+
+go_enrich <- enrichGO(gene = entrez_ids,
+                      OrgDb = org.Hs.eg.db,
+                      keyType = "ENTREZID",
+                      ont = "BP",
+                      pAdjustMethod = "BH",
+                      qvalueCutoff = 0.05,
+                      readable = TRUE)
+
+head(go_enrich)
+
+#Barplot
+barplot(go_enrich, showCategory = 20, title = "GO BP Enrichment")
+
+#kegg enrichment
+
+kegg_enrich <- enrichKEGG(gene = entrez_ids,
+                          organism = "hsa",
+                          pAdjustMethod = "BH",
+                          qvalueCutoff = 0.05)
+
+# Entrez ID'den gen adlarına dönüştür (okunabilirlik)
+kegg_enrich <- setReadable(kegg_enrich, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
+
+# İlk sonuçlara bak
+head(kegg_enrich)
+
+# Barplot
+barplot(kegg_enrich, showCategory = 20, title = "KEGG Pathway Enrichment")
+
+write_xlsx(as.data.frame(go_enrich), "GSE11691_GO_enrichment.xlsx")
+write_xlsx(as.data.frame(kegg_enrich), "GSE11691_KEGG_enrichment.xlsx")
 
 
 

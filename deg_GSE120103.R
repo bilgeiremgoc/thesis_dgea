@@ -2,11 +2,13 @@ gse <- getGEO("GSE120103")
 
 gse1em <- getGEO("GSE120103", GSEMatrix = TRUE, AnnotGPL = TRUE)
 
+gse_data <- gse1em[[1]]
+
 exprs_data <- exprs(gse1em[[1]])
 
+exprs_data <- log2(exprs_data + 1)
 
-# Veri hakkında genel bilgi
-head(exprs_data)
+exprs(gse_data) <- exprs_data
 
 
 boxplot(exprs_data, outline = FALSE, las=2, main="Before Normalization")
@@ -14,9 +16,16 @@ boxplot(exprs_data, outline = FALSE, las=2, main="Before Normalization")
 exprs_data <- normalizeBetweenArrays(exprs_data, method = "quantile")
 boxplot(exprs_data, outline = FALSE, las=2, main="After Normalization")
 
-group <- factor(c(rep("endometriosis", 18), rep("control", 18)))
-design <- model.matrix(~ 0 + group)
-colnames(design) <- levels(group) 
+metadata <- pData(gse_data)
+
+group <- ifelse(grepl("endometriosis", metadata$title, ignore.case = TRUE), "control", "endometriosis")
+group <- factor(group)
+table(group)  # grup sayısını kontrol et
+
+
+# Design matrisi oluştur
+design <- model.matrix(~0 + group)
+colnames(design) <- levels(group)
 
 
 fit <- lmFit(exprs_data, design)
@@ -26,12 +35,27 @@ contrast_matrix <- makeContrasts(endometriosis - control, levels = design)
 fit2 <- contrasts.fit(fit, contrast_matrix)
 fit2 <- eBayes(fit2)
 
-# Sonu??lar?? al
+# Sonuçları alma
 
 results <- topTable(fit2, adjust = "fdr", number = Inf)
+head(results)
 
-deg <- subset(results, abs(logFC) > 1 & adj.P.Val < 0.05)
+deg_results <- topTable(fit2, adjust.method = "BH", number = Inf)
+
+# Filtrele: logFC > 1 ve adj.P.Val < 0.05
+deg <- subset(deg_results, abs(logFC) > 1 & adj.P.Val < 0.05)
 head(deg)
+
+feature_data <- fData(gse1em[[1]])
+colnames(feature_data)
+
+deg$gene_symbol <- feature_data[rownames(deg), "Gene symbol"]
+head(deg)
+
+deg$gene_symbol[deg$gene_symbol == ""] <- NA
+
+deg_clean <- deg[!is.na(deg$gene_symbol), ]
+deg_clean
 
 # Volkan Plotu
 results$threshold <- as.factor(abs(results$logFC) > 1 & results$adj.P.Val < 0.05)
@@ -43,15 +67,14 @@ ggplot(results, aes(x = logFC, y = -log10(adj.P.Val), color = threshold)) +
   labs(title = "Volcano Plot")
 
 # Heatmap (ilk 50 DEG)
-pheatmap(exprs_data[rownames(deg)[1:50], ], scale = "row")
+deg_rows <- rownames(deg_clean)[1:50]
+exprs_subset <- exprs_data[deg_rows, ]
+pheatmap(exprs_subset, scale = "row", main = "Heatmap of Top 50 DEGs")
 
-deg$GeneSymbol <- getSYMBOL(rownames(deg), "hgu133a.db")
-head(deg)
-
-write.csv(deg, "deg_GSE120103.csv")
+write.csv(deg_clean, "deg_GSE120103.csv")
 
 
-deg_filtered <- deg %>%
+deg_filtered <- deg_clean %>%
   filter(adj.P.Val < 0.05 & abs(logFC) > 1)
 
 up_genes <- deg_filtered %>% filter(logFC > 1)
@@ -60,33 +83,66 @@ down_genes <- deg_filtered %>% filter(logFC < -1)
 cat("Upregulated:", nrow(up_genes), "\nDownregulated:", nrow(down_genes), "\n")
 
 
-#GENE ID İLE EŞLEŞTİR
 
 
 
 
-deg_data <- read.table("GSE120103.top.table.tsv", header = TRUE, sep = "\t", quote = "", stringsAsFactors = FALSE)
-
-nrow(deg_data)
-
-# İlk satırlara göz at
-head(deg_data)
-
-# Örnek eşik: logFC > 1 veya < -1 ve adj.P.Val < 0.05
-deg_filtered <- deg_data %>%
-  filter(adj.P.Val < 0.05 & abs(logFC) > 1)
 
 
-# Kaç tane gen kaldı?
-nrow(deg_filtered)
-
-# İlk birkaç tanesini gör
-head(deg_filtered)
-
-up_genes <- deg_filtered %>% filter(logFC > 1)
-down_genes <- deg_filtered %>% filter(logFC < -1)
-
-cat("Upregulated:", nrow(up_genes), "\nDownregulated:", nrow(down_genes), "\n")
 
 
-write.csv(deg_filtered, "deg_GSE120103_GEO2R.csv" )
+library(biomaRt)
+
+mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+
+gene_map <- getBM(
+  filters = "external_gene_name",
+  attributes = c("external_gene_name", "entrezgene_id"),
+  values = deg_clean$gene_symbol,
+  mart = mart
+)
+
+deg_clean <- merge(deg_clean, gene_map,
+                   by.x = "gene_symbol", by.y = "external_gene_name",
+                   all.x = TRUE)
+
+deg_clean <- deg_clean[!is.na(deg_clean$entrezgene_id), ]
+
+entrez_ids <- unique(deg_clean$entrezgene_id)
+
+go_enrich <- enrichGO(
+  gene          = entrez_ids,
+  OrgDb         = org.Hs.eg.db,
+  keyType       = "ENTREZID",
+  ont           = "BP",
+  pAdjustMethod = "BH",
+  qvalueCutoff  = 0.05,
+  readable      = TRUE
+)
+
+# Sonuçları görüntüle
+head(go_enrich)
+
+# Barplot (ilk 20 kategori)
+barplot(go_enrich, showCategory = 20, title = "GO Biological Process Enrichment")
+
+#kegg enrichment
+kegg_enrich <- enrichKEGG(
+  gene          = entrez_ids,
+  organism      = "hsa",
+  pAdjustMethod = "BH",
+  qvalueCutoff  = 0.05
+)
+
+# Entrez ID'den gene symbol'a çevir (okunabilirlik)
+kegg_enrich <- setReadable(kegg_enrich, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
+
+# İlk sonuçlara göz at
+head(kegg_enrich)
+
+# Barplot (ilk 20 yolak)
+barplot(kegg_enrich, showCategory = 20, title = "KEGG Pathway Enrichment")
+
+write_xlsx(as.data.frame(go_enrich), "GSE120103_GO_enrichment.xlsx")
+write_xlsx(as.data.frame(kegg_enrich), "GSE120103_KEGG_enrichment.xlsx")
+
