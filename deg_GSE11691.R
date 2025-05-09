@@ -114,7 +114,6 @@ deg_filtered$ENTREZID <- mapIds(hgu133a.db,
                                 multiVals = "first")
 
 
-# NA olmayanları al
 entrez_ids <- na.omit(deg_filtered$ENTREZID)
 
 go_enrich <- enrichGO(gene = entrez_ids,
@@ -137,10 +136,9 @@ kegg_enrich <- enrichKEGG(gene = entrez_ids,
                           pAdjustMethod = "BH",
                           qvalueCutoff = 0.05)
 
-# Entrez ID'den gen adlarına dönüştür (okunabilirlik)
+
 kegg_enrich <- setReadable(kegg_enrich, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
 
-# İlk sonuçlara bak
 head(kegg_enrich)
 
 # Barplot
