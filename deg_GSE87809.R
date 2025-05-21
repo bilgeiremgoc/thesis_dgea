@@ -2,14 +2,13 @@ gse <- getGEO("GSE87809", GSEMatrix = TRUE)
 
 gse <- gse[[1]]
 
-# Dosya yoluna göre oku
+
 countData <- read.delim("GSE87809_raw_counts_GRCh38.p13_NCBI.tsv.gz", row.names = 1)
 head(countData)
 
 metadata <- pData(gse)
 head(metadata)
 
-# Muhtemelen "characteristics_ch1" kolonunda grup bilgisi var
 group_list <- ifelse(grepl("control", metadata$characteristics_ch1.1), "control", "endometriosis")
 group_list <- factor(group_list)
 table(group_list)
