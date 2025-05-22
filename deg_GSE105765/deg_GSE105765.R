@@ -16,13 +16,11 @@ gse1em <- getGEO("GSE105765", GSEMatrix = TRUE)
 
 files <- list.files("GSE105765", pattern = "txt.gz", full.names = TRUE)
 
-# Her bir örneği oku
+
 counts_list <- lapply(files, function(f) {
   dat <- read.table(gzfile(f), header = TRUE, sep = "\t", row.names = 1)
-  dat[, 1, drop = FALSE]  # ilk sütun count gibi görünüyorsa
-})
+  dat[, 1, drop = FALSE] })
 
-# Ortak satır isimlerine göre birleştir
 counts <- do.call(cbind, counts_list)
 colnames(counts) <- gsub("_.*", "", basename(files))  # Kolon isimleri
 
@@ -31,20 +29,18 @@ exprs_data <- exprs(gse[[1]])
 meta <- pData(gse[[1]])
 
 
-counts <- read.table("C:/Users/bilge/Documents/thesis_dgea/GSE105765_count.txt.gz", 
+counts <- read.table("C:/Users/bilge/Documents/thesis_dgea/deg_GSE105765/GSE105765_count.txt.gz", 
                      header = TRUE, 
                      sep = "\t", 
                      row.names = 1, 
                      check.names = FALSE)
-dim(counts)  # Satır ve sütun sayısını kontrol et
+dim(counts)  
 colnames(counts)
 
 group <- ifelse(grepl("^EC", colnames(counts)), "control", "case")
 group <- factor(group)
 table(group)  
 
-
-# colData oluşturma
 colData <- data.frame(row.names = colnames(counts),
                       condition = factor(group, levels = c("control", "case")))
 
@@ -78,8 +74,6 @@ ggplot(volcano_df, aes(x = log2FoldChange, y = -log10(padj), color = threshold))
   labs(title = "Volcano Plot")
 
 
-
-
 # 7. Heatmap
 vsd <- vst(dds)
 pheatmap(assay(vsd)[rownames(deg)[1:50], ], scale = "row",
@@ -99,6 +93,9 @@ write_xlsx(data_cleaned, "deg_GSE105765.xlsx")
 rownames(data_cleaned$symbol)
 gene_list <- data_cleaned$X
 head(gene_list)
+miRNA_entrez <- select(org.Hs.eg.db, keys = gene_list, columns = c("ENTREZID"), keytype = "SYMBOL")
+
+
 gene_df <- bitr(gene_list, fromType="ENSEMBL", toType=c("SYMBOL", "ENTREZID"), OrgDb="org.Hs.eg.db")
 head(gene_df)
 

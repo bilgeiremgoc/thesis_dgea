@@ -15,47 +15,46 @@ group <- ifelse(metadata$`endometriosis/no endometriosis:ch1` == "Endometriosis"
 group <- factor(group)
 table(group)
 
-
 metadata <- pData(gse_data)
 
 group <- ifelse(grepl("endometriosis", metadata$title, ignore.case = TRUE), "control", "endometriosis")
 group <- factor(group)
-table(group)  # grup sayısını kontrol et
+table(group)
 
-
-# Design matrisi oluştur
 design <- model.matrix(~0 + group)
 colnames(design) <- levels(group)
 
-
 fit <- lmFit(exprs_data, design)
-
-# Grup kar????la??t??rmas??
 contrast_matrix <- makeContrasts(endometriosis - control, levels = design)
 fit2 <- contrasts.fit(fit, contrast_matrix)
 fit2 <- eBayes(fit2)
 
-# Sonuçları alma
-
 results <- topTable(fit2, adjust = "fdr", number = Inf)
 head(results)
 
-deg_results <- topTable(fit2, adjust.method = "BH", number = Inf)
+gpl <- getGEO("GPL6480", AnnotGPL = TRUE)
+annot_table <- Table(gpl)
+annot <- annot_table[, c("ID", "Gene symbol")]
+exprs_data$GeneSymbol <- annot$`Gene symbol`[match(rownames(exprs_data), annot$ID)]
 
-# Filtrele: logFC > 1 ve adj.P.Val < 0.05
-deg <- subset(deg_results, abs(logFC) > 1 & adj.P.Val < 0.05)
+
+deg <- subset(results, abs(logFC) > 1 & adj.P.Val < 0.05)
+deg <- deg %>% filter(GeneSymbol != "")
 head(deg)
 
-feature_data <- fData(gse1em[[1]])
-colnames(feature_data)
+write_xlsx(deg, "deg_GSE120103.xlsx")
 
-deg$gene_symbol <- feature_data[rownames(deg), "Gene symbol"]
-head(deg)
+deg_filtered <- deg %>% filter(!is.na(deg$GeneSymbol))
 
-deg$gene_symbol[deg$gene_symbol == ""] <- NA
+deg_filtered <- deg %>%
+  filter(adj.P.Val < 0.05 & abs(logFC) > 1)
+nrow(deg_filtered)
 
-deg_clean <- deg[!is.na(deg$gene_symbol), ]
-deg_clean
+up_genes <- deg_filtered %>% filter(logFC> 1)
+down_genes <- deg_filtered %>% filter(logFC < -1)
+
+write_xlsx(up_genes, "deg_GSE120103_up_genes.xlsx")
+write_xlsx(down_genes, "deg_GSE120103_down_genes.xlsx")
 
 # Volkan Plotu
 results$threshold <- as.factor(abs(results$logFC) > 1 & results$adj.P.Val < 0.05)
@@ -67,82 +66,100 @@ ggplot(results, aes(x = logFC, y = -log10(adj.P.Val), color = threshold)) +
   labs(title = "Volcano Plot")
 
 # Heatmap (ilk 50 DEG)
-deg_rows <- rownames(deg_clean)[1:50]
-exprs_subset <- exprs_data[deg_rows, ]
+deg_rows <- rownames(deg_filtered)[1:50]
+common_genes <- deg_rows[deg_rows %in% rownames(exprs_data)]
+exprs_subset <- exprs_data[common_genes, ]
 pheatmap(exprs_subset, scale = "row", main = "Heatmap of Top 50 DEGs")
 
-write.csv(deg_clean, "deg_GSE120103.csv")
 
 
-deg_filtered <- deg_clean %>%
-  filter(adj.P.Val < 0.05 & abs(logFC) > 1)
+deg_filtered$EntrezID <- mapIds(org.Hs.eg.db,
+                                keys = deg_filtered$GeneSymbol,
+                                column = "ENTREZID",
+                                keytype = "SYMBOL",
+                                multiVals = "first")
 
-up_genes <- deg_filtered %>% filter(logFC > 1)
-down_genes <- deg_filtered %>% filter(logFC < -1)
+entrez_ids <- deg_filtered$EntrezID
 
-cat("Upregulated:", nrow(up_genes), "\nDownregulated:", nrow(down_genes), "\n")
+#GO_BP
+go_result_BP <- enrichGO(gene = entrez_ids,
+                         OrgDb = org.Hs.eg.db,
+                         keyType = "ENTREZID",
+                         ont = "BP",
+                         pAdjustMethod = "BH",
+                         qvalueCutoff = 0.05,
+                         readable = TRUE)
 
+head(go_result_BP)
+barplot(go_result_BP, showCategory = 20, title = "GO BP Enrichment")
+write_xlsx(as.data.frame(go_result_BP), "deg_GSE120103_GO_BP_enrichment.xlsx")
 
+#GO_MF
+go_result_MF<- enrichGO(gene = entrez_ids,
+                        OrgDb = org.Hs.eg.db,
+                        keyType = "ENTREZID",
+                        ont = "MF",
+                        pAdjustMethod = "BH",
+                        qvalueCutoff = 0.05,
+                        readable = TRUE)
 
+head(go_result_MF)
+barplot(go_result_MF, showCategory = 20, title = "GO MF Enrichment")
+write_xlsx(as.data.frame(go_result_MF), "deg_GSE120103_GO_MF_enrichment.xlsx")
 
+#GO_CC
+go_result_CC <- enrichGO(gene = entrez_ids,
+                         OrgDb = org.Hs.eg.db,
+                         keyType = "ENTREZID",
+                         ont = "CC",
+                         pAdjustMethod = "BH",
+                         qvalueCutoff = 0.05,
+                         readable = TRUE)
 
+head(go_result_CC)
+barplot(go_result_CC, showCategory = 20, title = "GO CC Enrichment")
+write_xlsx(as.data.frame(go_result_CC), "deg_GSE120103_GO_CC_enrichment.xlsx")
 
+#KEGG enrichment
+kegg_enrich <- enrichKEGG(gene = entrez_ids,
+                          organism = "hsa",
+                          pAdjustMethod = "BH",
+                          qvalueCutoff = 0.05)
 
-
-
-
-library(biomaRt)
-
-mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-
-gene_map <- getBM(
-  filters = "external_gene_name",
-  attributes = c("external_gene_name", "entrezgene_id"),
-  values = deg_clean$gene_symbol,
-  mart = mart
-)
-
-deg_clean <- merge(deg_clean, gene_map,
-                   by.x = "gene_symbol", by.y = "external_gene_name",
-                   all.x = TRUE)
-
-deg_clean <- deg_clean[!is.na(deg_clean$entrezgene_id), ]
-
-entrez_ids <- unique(deg_clean$entrezgene_id)
-
-go_enrich <- enrichGO(
-  gene          = entrez_ids,
-  OrgDb         = org.Hs.eg.db,
-  keyType       = "ENTREZID",
-  ont           = "BP",
-  pAdjustMethod = "BH",
-  qvalueCutoff  = 0.05,
-  readable      = TRUE
-)
-
-# Sonuçları görüntüle
-head(go_enrich)
-
-# Barplot (ilk 20 kategori)
-barplot(go_enrich, showCategory = 20, title = "GO Biological Process Enrichment")
-
-#kegg enrichment
-kegg_enrich <- enrichKEGG(
-  gene          = entrez_ids,
-  organism      = "hsa",
-  pAdjustMethod = "BH",
-  qvalueCutoff  = 0.05
-)
-
-# Entrez ID'den gene symbol'a çevir (okunabilirlik)
 kegg_enrich <- setReadable(kegg_enrich, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
-
-# İlk sonuçlara göz at
 head(kegg_enrich)
-
-# Barplot (ilk 20 yolak)
 barplot(kegg_enrich, showCategory = 20, title = "KEGG Pathway Enrichment")
 
-write_xlsx(as.data.frame(go_enrich), "GSE120103_GO_enrichment.xlsx")
-write_xlsx(as.data.frame(kegg_enrich), "GSE120103_KEGG_enrichment.xlsx")
+write_xlsx(as.data.frame(kegg_enrich), "deg_GSE120103_KEGG_enrichment.xlsx")
+
+#Reactome Enrichment
+reactome_enrich <- enrichPathway(gene = entrez_ids, 
+                                 organism = "human", 
+                                 pvalueCutoff = 0.1, 
+                                 qvalueCutoff = 0.2)
+barplot(reactome_enrich, showCategory = 20, title = "Reactome Pathway Enrichment")
+write_xlsx(as.data.frame(reactome_enrich), "deg_GSE120103_reactome_enrichment.xlsx")
+
+
+
+
+
+#xcell inf
+exprs_data_symbols <- exprs_data
+rownames(exprs_data_symbols) <- gene_symbols
+exprs_data_symbols <- exprs_data_symbols[gene_symbols != "", ]
+
+
+xcell_result <- xCellAnalysis(exprs_data_symbols)
+
+xcell_df <- as.data.frame(xcell_result)
+xcell_df <- cbind(Cell_Type = rownames(xcell_result), xcell_df)
+
+pheatmap(xcell_result, 
+         main = "xCell Immune Infiltration - GSE120103",
+         scale = "row",
+         clustering_distance_rows = "euclidean",
+         clustering_distance_cols = "euclidean")
+
+write_xlsx(xcell_df, "xcell_GSE120103_results.xlsx")
 
