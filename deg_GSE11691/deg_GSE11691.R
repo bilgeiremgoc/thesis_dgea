@@ -165,7 +165,7 @@ reactome_enrich <- enrichPathway(gene = entrez_ids,
                                  pvalueCutoff = 0.1, 
                                  qvalueCutoff = 0.2)
 barplot(reactome_enrich, showCategory = 20, title = "Reactome Pathway Enrichment")
-write_xlsx(as.data.frame(reactome_enrich), "deg_GSE11691_SLE_reactome_enrichment.xlsx")
+write_xlsx(as.data.frame(reactome_enrich), "deg_GSE11691_reactome_enrichment.xlsx")
 
 
 
