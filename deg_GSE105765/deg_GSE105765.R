@@ -138,3 +138,14 @@ head(deg_filtered)
 
 up_genes <- deg_filtered %>% filter(log2FoldChange > 1)
 down_genes <- deg_filtered %>% filter(log2FoldChange < -1)
+
+
+
+gen_listesi <- readxl::read_excel("C:/Users/bilge/Documents/thesis_dgea/deg_GSE105765/deg_GSE105765.xlsx")
+
+up_genes_endo <- gen_listesi %>% filter(log2FoldChange > 1 & padj < 0.05) 
+down_genes_endo <- gen_listesi %>% filter(log2FoldChange < -1 & padj < 0.05)
+
+
+write_xlsx(up_genes_endo, "deg_GSE105765_up_genes_endometriosis.xlsx")
+write_xlsx(down_genes_endo, "deg_GSE105765_down_genes_endometriosis.xlsx")
