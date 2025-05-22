@@ -4,17 +4,17 @@ gse1em <- getGEO("GSE120103", GSEMatrix = TRUE, AnnotGPL = TRUE)
 
 gse_data <- gse1em[[1]]
 
-exprs_data <- exprs(gse1em[[1]])
-
-exprs_data <- log2(exprs_data + 1)
-
-exprs(gse_data) <- exprs_data
-
+exprs_data <- exprs(gse_data)
 
 boxplot(exprs_data, outline = FALSE, las=2, main="Before Normalization")
-
-exprs_data <- normalizeBetweenArrays(exprs_data, method = "quantile")
+exprs_data <- normalizeBetweenArrays(exprs_data)
 boxplot(exprs_data, outline = FALSE, las=2, main="After Normalization")
+
+metadata <- pData(gse_data)
+group <- ifelse(metadata$`endometriosis/no endometriosis:ch1` == "Endometriosis", "case", "control")
+group <- factor(group)
+table(group)
+
 
 metadata <- pData(gse_data)
 
