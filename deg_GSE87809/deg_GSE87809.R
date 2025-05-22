@@ -135,5 +135,11 @@ barplot(kegg_enrich, showCategory = 20, title = "Top 20 KEGG Pathways")
 write_xlsx(as.data.frame(go_enrich), "GSE87809_GO_enrichment_results.xlsx")
 write_xlsx(as.data.frame(kegg_enrich), "GSE87809_KEGG_enrichment_results.xlsx")
 
+gen_listesi <- readxl::read_excel("deg_GSE87809/GSE87809_DEG_with_gene_names.xlsx")
+
+up_genes_endo <- gen_listesi %>% filter(log2FoldChange > 1 & padj < 0.05) 
+down_genes_endo <- gen_listesi %>% filter(log2FoldChange < -1 & padj < 0.05)
 
 
+write_xlsx(up_genes_endo, "deg_GSE87809_up_genes_endometriosis.xlsx")
+write_xlsx(down_genes_endo, "deg_GSE87809_down_genes_endometriosis.xlsx")
